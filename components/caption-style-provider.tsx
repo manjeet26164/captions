@@ -9,6 +9,9 @@ import {
 type CaptionStyleContextValue = {
   selectedStyle: CaptionStylePreset;
   setSelectedStyle: (style: CaptionStylePreset) => void;
+  /** Manual vertical nudge as a fraction of frame height (-0.35 to 0.35, 0 = preset default). */
+  captionOffset: number;
+  setCaptionOffset: (offset: number) => void;
 };
 
 const CaptionStyleContext = createContext<CaptionStyleContextValue | null>(null);
@@ -19,10 +22,11 @@ export function CaptionStyleProvider({
   children: ReactNode;
 }) {
   const [selectedStyle, setSelectedStyle] = useState<CaptionStylePreset>(captionStylePresets[0]);
+  const [captionOffset, setCaptionOffset] = useState(0);
 
   const value = useMemo(
-    () => ({ selectedStyle, setSelectedStyle }),
-    [selectedStyle]
+    () => ({ selectedStyle, setSelectedStyle, captionOffset, setCaptionOffset }),
+    [selectedStyle, captionOffset]
   );
 
   return (

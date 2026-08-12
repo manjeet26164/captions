@@ -7,6 +7,25 @@ function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
+/** Mirrors the canvas preview's proportional Y placement (see getCaptionY in caption-canvas-renderer.tsx). */
+function getBaseYFraction(position: CaptionStylePreset['position']) {
+  if (position === 'top') {
+    return 0.16;
+  }
+
+  if (position === 'center') {
+    return 0.52;
+  }
+
+  return 0.82;
+}
+
+function buildPositionOverride(position: CaptionStylePreset['position'], offset: number) {
+  const playResY = 1080;
+  const y = clamp((getBaseYFraction(position) + offset) * playResY, 40, playResY - 40);
+  return `{\\pos(960,${Math.round(y)})}`;
+}
+
 function toAssTimestamp(seconds: number) {
   const totalCentiseconds = Math.max(0, Math.round(seconds * assTimeUnits));
   const centiseconds = totalCentiseconds % assTimeUnits;
@@ -168,7 +187,8 @@ function buildStyleLine(style: CaptionStylePreset) {
 
 export function buildAssSubtitleFile(
   wordTimestamps: WordTimestamp[],
-  style: CaptionStylePreset
+  style: CaptionStylePreset,
+  offset = 0
 ) {
   const header = [
     '[Script Info]',
@@ -186,6 +206,8 @@ export function buildAssSubtitleFile(
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text'
   ];
 
+  const positionOverride = buildPositionOverride(style.position, offset);
+
   const dialogue = wordTimestamps
     .filter((word) => word.word.trim().length > 0)
     .map((word) => {
@@ -193,7 +215,7 @@ export function buildAssSubtitleFile(
       const end = Math.max(start + 0.05, word.end);
       const animationTag = getAnimationOverride(style);
       const rawWord = style.uppercase ? word.word.trim().toUpperCase() : word.word.trim();
-      const text = `${animationTag}${escapeAssText(rawWord)}`;
+      const text = `${positionOverride}${animationTag}${escapeAssText(rawWord)}`;
 
       return `Dialogue: 0,${toAssTimestamp(start)},${toAssTimestamp(end)},Default,,0,0,0,,${text}`;
     });

@@ -173,11 +173,16 @@ export async function POST(request: Request) {
       }
 
       // Groq's free tier does not require billing setup.
+      // `language: 'en'` forces Whisper to output Roman/Latin script even when the
+      // speech is Hindi/Hinglish — without this it auto-detects Hindi and returns
+      // Devanagari script. The `prompt` further nudges it toward Hinglish spelling.
       const transcription = (await client.audio.transcriptions.create({
         model: 'whisper-large-v3-turbo',
         file: createReadStream(audioPath),
         response_format: 'verbose_json',
-        timestamp_granularities: ['word']
+        timestamp_granularities: ['word'],
+        language: 'en',
+        prompt: 'Yeh Hinglish transcript hai, roman English letters mein likha jayega, jaise kya hua bro, sahi baat hai, chalo shuru karte hain.'
       })) as GroqVerboseTranscription;
 
       const transcript = extractTranscriptWords(transcription);

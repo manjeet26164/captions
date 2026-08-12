@@ -2,7 +2,7 @@
 
 import { useCaptionStyle } from '@/components/caption-style-provider';
 import type { CaptionStylePreset } from '@/lib/captionStyles';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 
 export type WordTimestamp = {
   word: string;
@@ -91,16 +91,23 @@ function drawRoundedRect(
   context.closePath();
 }
 
-function getCaptionY(position: CaptionStylePreset['position'], canvasHeight: number, textBlockHeight: number) {
+function getCaptionY(
+  position: CaptionStylePreset['position'],
+  canvasHeight: number,
+  textBlockHeight: number,
+  offset: number
+) {
+  const nudge = canvasHeight * offset;
+
   if (position === 'top') {
-    return canvasHeight * 0.16;
+    return clamp(canvasHeight * 0.16 + nudge, 8, canvasHeight - textBlockHeight - 8);
   }
 
   if (position === 'center') {
-    return canvasHeight * 0.52;
+    return clamp(canvasHeight * 0.52 + nudge, 8, canvasHeight - textBlockHeight - 8);
   }
 
-  return canvasHeight * 0.82 - textBlockHeight;
+  return clamp(canvasHeight * 0.82 - textBlockHeight + nudge, 8, canvasHeight - textBlockHeight - 8);
 }
 
 function createWordVisuals(
@@ -195,10 +202,12 @@ function createWordVisuals(
 }
 
 export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, className }: CaptionCanvasRendererProps) {
-  const { selectedStyle } = useCaptionStyle();
+  const { selectedStyle, captionOffset, setCaptionOffset } = useCaptionStyle();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const frameRef = useRef<number | null>(null);
+  const dragStateRef = useRef<{ startClientY: number; startOffset: number } | null>(null);
+  const [isDraggingCaption, setIsDraggingCaption] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [duration, setDuration] = useState(0);
   const [isReady, setIsReady] = useState(false);
@@ -374,7 +383,7 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
     }
 
     const textBlockHeight = lines.length * lineHeight + textPaddingY * 2;
-    const startY = getCaptionY(selectedStyle.position, cssHeight, textBlockHeight);
+    const startY = getCaptionY(selectedStyle.position, cssHeight, textBlockHeight, captionOffset);
 
     const showBackground = Boolean(selectedStyle.backgroundColor);
 
@@ -448,11 +457,7 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
         }
       });
     });
-  }, [editableWords, selectedStyle]);
-
-  useEffect(() => {
-    renderFrame();
-  }, [editableWords, renderFrame]);
+  }, [editableWords, selectedStyle, captionOffset]);
 
   const handleTimelineSeek = useCallback((time: number) => {
     const video = videoRef.current;
@@ -610,6 +615,7 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
       formData.append('video', sourceFile);
       formData.append('wordTimestamps', JSON.stringify(editableWords));
       formData.append('style', JSON.stringify(selectedStyle));
+      formData.append('offsetY', String(captionOffset));
 
       const response = await fetch('/api/render', {
         method: 'POST',
@@ -633,7 +639,48 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
     } finally {
       setIsExporting(false);
     }
-  }, [downloadBlob, editableWords, isExporting, selectedStyle, sourceFile]);
+  }, [downloadBlob, editableWords, isExporting, selectedStyle, sourceFile, captionOffset]);
+
+  const handleCaptionDragStart = useCallback((clientY: number) => {
+    dragStateRef.current = { startClientY: clientY, startOffset: captionOffset };
+    setIsDraggingCaption(true);
+  }, [captionOffset]);
+
+  const handleCaptionDragMove = useCallback((clientY: number) => {
+    const dragState = dragStateRef.current;
+    const canvas = canvasRef.current;
+
+    if (!dragState || !canvas) {
+      return;
+    }
+
+    const displayHeight = canvas.getBoundingClientRect().height || 1;
+    const deltaFraction = (clientY - dragState.startClientY) / displayHeight;
+    const nextOffset = clamp(dragState.startOffset + deltaFraction, -0.35, 0.35);
+    setCaptionOffset(nextOffset);
+  }, [setCaptionOffset]);
+
+  const handleCaptionDragEnd = useCallback(() => {
+    dragStateRef.current = null;
+    setIsDraggingCaption(false);
+  }, []);
+
+  const handleCanvasPointerDown = useCallback((event: ReactPointerEvent<HTMLCanvasElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    handleCaptionDragStart(event.clientY);
+  }, [handleCaptionDragStart]);
+
+  const handleCanvasPointerMove = useCallback((event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (!dragStateRef.current) {
+      return;
+    }
+    handleCaptionDragMove(event.clientY);
+  }, [handleCaptionDragMove]);
+
+  const handleCanvasPointerUp = useCallback((event: ReactPointerEvent<HTMLCanvasElement>) => {
+    event.currentTarget.releasePointerCapture(event.pointerId);
+    handleCaptionDragEnd();
+  }, [handleCaptionDragEnd]);
 
   const progress = useMemo(() => {
     if (!duration || !videoRef.current) {
@@ -647,9 +694,50 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
 
   return (
     <div className={className ?? 'rounded-[1.75rem] border border-white/10 bg-slate-950/80 p-4 shadow-glow'}>
-      <div className="overflow-hidden rounded-[1.4rem] border border-white/10 bg-black/70">
-        <canvas ref={canvasRef} className="block h-auto w-full" aria-label="Rendered caption preview" />
+      <div className="relative overflow-hidden rounded-[1.4rem] border border-white/10 bg-black/70">
+        <canvas
+          ref={canvasRef}
+          className={`block h-auto w-full ${hasWords ? 'cursor-ns-resize touch-none' : ''}`}
+          aria-label="Rendered caption preview"
+          onPointerDown={hasWords ? handleCanvasPointerDown : undefined}
+          onPointerMove={hasWords ? handleCanvasPointerMove : undefined}
+          onPointerUp={hasWords ? handleCanvasPointerUp : undefined}
+          onPointerCancel={hasWords ? handleCanvasPointerUp : undefined}
+        />
+        {hasWords ? (
+          <div
+            className={`pointer-events-none absolute bottom-2 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-3 py-1 text-[11px] text-white transition-opacity ${
+              isDraggingCaption ? 'opacity-100' : 'opacity-0'
+            }`}
+          >
+            Drag to reposition captions
+          </div>
+        ) : null}
       </div>
+
+      {hasWords ? (
+        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
+          <span className="whitespace-nowrap text-xs uppercase tracking-[0.28em] text-slate-400">
+            Caption position
+          </span>
+          <input
+            type="range"
+            min={-35}
+            max={35}
+            step={1}
+            value={Math.round(captionOffset * 100)}
+            onChange={(event) => setCaptionOffset(clamp(Number(event.target.value) / 100, -0.35, 0.35))}
+            className="h-1.5 flex-1 min-w-[8rem] accent-cyan-400"
+          />
+          <button
+            type="button"
+            onClick={() => setCaptionOffset(0)}
+            className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/10"
+          >
+            Reset
+          </button>
+        </div>
+      ) : null}
 
       <video ref={videoRef} src={videoSrc} className="hidden" muted={false} playsInline preload="auto" />
 
