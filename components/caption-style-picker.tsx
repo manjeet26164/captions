@@ -42,6 +42,18 @@ function getPreviewAnimation(animation: CaptionAnimation) {
         animate: { width: '100%' },
         transition: { duration: 1.7, repeat: Infinity, repeatDelay: 0.5, ease: 'easeInOut' as const }
       };
+    case 'glow-pulse':
+      return {
+        initial: { opacity: 0.75, scale: 1 },
+        animate: { opacity: [0.75, 1, 0.75], scale: [1, 1.05, 1] },
+        transition: { duration: 1.4, repeat: Infinity, repeatDelay: 0.2, ease: 'easeInOut' as const }
+      };
+    case 'highlight-box':
+      return {
+        initial: { scale: 0.96 },
+        animate: { scale: [0.96, 1, 0.96] },
+        transition: { duration: 1.1, repeat: Infinity, repeatDelay: 0.2, ease: 'easeInOut' as const }
+      };
   }
 }
 
@@ -69,6 +81,52 @@ function PreviewText({ style }: { style: CaptionStylePreset }) {
               backgroundColor: index === 1 ? style.backgroundColor : 'transparent',
               paddingInline: index === 1 ? '0.35rem' : 0,
               borderRadius: index === 1 ? '999px' : 0
+            }}
+          >
+            {word}
+          </motion.span>
+        ))}
+      </div>
+    );
+  }
+
+  if (style.animation === 'glow-pulse') {
+    const words = style.uppercase ? sampleWords.map((word) => word.toUpperCase()) : sampleWords;
+
+    return (
+      <motion.div
+        className="mt-4 text-sm font-semibold"
+        initial={previewMotion.initial}
+        animate={previewMotion.animate}
+        transition={previewMotion.transition}
+        style={{
+          fontFamily: style.fontFamily,
+          color: style.color,
+          textShadow: `0 0 12px ${style.glowColor ?? style.color}, 0 0 24px ${style.glowColor ?? style.color}, ${style.strokeWidth / 3}px ${style.strokeWidth / 3}px 0 ${style.strokeColor}`
+        }}
+      >
+        {words.join(' ')}
+      </motion.div>
+    );
+  }
+
+  if (style.animation === 'highlight-box') {
+    const words = style.uppercase ? sampleWords.map((word) => word.toUpperCase()) : sampleWords;
+
+    return (
+      <div className="mt-4 flex flex-wrap justify-center gap-1.5 text-sm font-semibold" style={{ fontFamily: style.fontFamily }}>
+        {words.map((word, index) => (
+          <motion.span
+            key={word}
+            initial={{ scale: 0.96 }}
+            animate={{ scale: index === 1 ? [0.96, 1.08, 0.96] : 1 }}
+            transition={{ duration: 1.1, repeat: Infinity, repeatDelay: 0.2, delay: index * 0.1, ease: 'easeInOut' }}
+            style={{
+              color: index === 1 ? style.activeColor ?? '#000000' : style.color,
+              backgroundColor: index === 1 ? style.activeBackgroundColor : 'transparent',
+              textShadow: index === 1 ? 'none' : `${style.strokeWidth / 3}px ${style.strokeWidth / 3}px 0 ${style.strokeColor}`,
+              paddingInline: index === 1 ? '0.4rem' : 0,
+              borderRadius: index === 1 ? '0.4rem' : 0
             }}
           >
             {word}

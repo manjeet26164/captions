@@ -1,4 +1,4 @@
-import type { CaptionAnimation, CaptionStylePreset } from '@/lib/captionStyles';
+import type { CaptionStylePreset } from '@/lib/captionStyles';
 import type { WordTimestamp } from '@/components/caption-canvas-renderer';
 
 const assTimeUnits = 100;
@@ -97,8 +97,8 @@ function getMarginVertical(position: CaptionStylePreset['position']) {
   return 92;
 }
 
-function getAnimationOverride(animation: CaptionAnimation) {
-  switch (animation) {
+function getAnimationOverride(style: CaptionStylePreset) {
+  switch (style.animation) {
     case 'pop':
       return '{\\fad(60,80)\\fscx108\\fscy108\\t(0,160,\\fscx100\\fscy100)}';
     case 'karaoke-highlight':
@@ -109,23 +109,35 @@ function getAnimationOverride(animation: CaptionAnimation) {
       return '{\\fad(30,50)\\t(0,140,\\fscy114)\\t(140,260,\\fscy100)}';
     case 'typewriter':
       return '{\\fad(30,40)}';
+    case 'glow-pulse': {
+      const blur = Math.max(2, Math.round((style.glowBlur ?? 24) / 6));
+      return `{\\fad(60,80)\\blur${blur}\\fscx104\\fscy104\\t(0,160,\\fscx100\\fscy100)}`;
+    }
+    case 'highlight-box':
+      return '{\\fad(30,60)\\fscx106\\fscy106\\t(0,120,\\fscx100\\fscy100)}';
     default:
       return '';
   }
 }
 
 function getBorderStyle(style: CaptionStylePreset) {
-  return style.backgroundColor ? 3 : 1;
+  return style.backgroundColor || style.animation === 'highlight-box' ? 3 : 1;
 }
 
 function buildStyleLine(style: CaptionStylePreset) {
   const fontName = normalizeFontName(style.fontFamily);
-  const primaryColour = hexToAssColor(style.color);
+  const isHighlightBox = style.animation === 'highlight-box';
+  const isGlow = style.animation === 'glow-pulse';
+
+  const primaryColour = hexToAssColor(isHighlightBox ? style.activeColor ?? style.color : style.color);
   const secondaryColour = hexToAssColor(style.color);
-  const outlineColour = hexToAssColor(style.strokeColor);
-  const backColour = rgbaToAssColor(style.backgroundColor);
-  const outline = style.backgroundColor ? 0 : Math.max(2, Math.round(style.strokeWidth / 3));
-  const shadow = style.backgroundColor ? 0 : 1;
+  const outlineColour = hexToAssColor(isGlow && style.glowColor ? style.glowColor : style.strokeColor);
+  const backColour = isHighlightBox
+    ? hexToAssColor(style.activeBackgroundColor ?? '#FFE600')
+    : rgbaToAssColor(style.backgroundColor);
+  const hasOpaqueBox = Boolean(style.backgroundColor) || isHighlightBox;
+  const outline = hasOpaqueBox ? 0 : isGlow ? Math.max(3, Math.round(style.strokeWidth / 2)) : Math.max(2, Math.round(style.strokeWidth / 3));
+  const shadow = hasOpaqueBox ? 0 : 1;
 
   return [
     'Style: Default',
@@ -179,8 +191,9 @@ export function buildAssSubtitleFile(
     .map((word) => {
       const start = Math.max(0, word.start);
       const end = Math.max(start + 0.05, word.end);
-      const animationTag = getAnimationOverride(style.animation);
-      const text = `${animationTag}${escapeAssText(word.word.trim())}`;
+      const animationTag = getAnimationOverride(style);
+      const rawWord = style.uppercase ? word.word.trim().toUpperCase() : word.word.trim();
+      const text = `${animationTag}${escapeAssText(rawWord)}`;
 
       return `Dialogue: 0,${toAssTimestamp(start)},${toAssTimestamp(end)},Default,,0,0,0,,${text}`;
     });

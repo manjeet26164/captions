@@ -161,6 +161,28 @@ function createWordVisuals(
       };
     }
 
+    if (style.animation === 'glow-pulse') {
+      return {
+        word,
+        opacity: isActive ? 1 : 0.82,
+        scale: isActive ? 1.06 : 1,
+        yOffset: 0,
+        color: style.color,
+        shouldRender: true
+      };
+    }
+
+    if (style.animation === 'highlight-box') {
+      return {
+        word,
+        opacity: 1,
+        scale: isActive ? 1.05 : 1,
+        yOffset: 0,
+        color: isActive ? (style.activeColor ?? style.color) : style.color,
+        shouldRender: true
+      };
+    }
+
     return {
       word,
       opacity: isActive ? 1 : 0.72,
@@ -319,13 +341,15 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
     context.lineJoin = 'round';
     context.miterLimit = 2;
 
+    const displayText = (text: string) => (selectedStyle.uppercase ? text.toUpperCase() : text);
+
     const spaceWidth = context.measureText(' ').width;
     const lines: { words: CaptionWordVisual[]; width: number }[] = [];
     let currentLine: CaptionWordVisual[] = [];
     let currentLineWidth = 0;
 
     visuals.forEach((visual) => {
-      const wordWidth = context.measureText(visual.word.word).width;
+      const wordWidth = context.measureText(displayText(visual.word.word)).width;
       const nextWidth = currentLine.length === 0 ? wordWidth : currentLineWidth + spaceWidth + wordWidth;
 
       if (currentLine.length > 0 && nextWidth > maxTextWidth) {
@@ -369,10 +393,13 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
       }
 
       let cursorX = lineX;
+      const activeWordIndexNow = getActiveWordIndex(editableWords, currentTime);
 
       line.words.forEach((visual, index) => {
-        const wordWidth = context.measureText(visual.word.word).width;
-        const isHighlighted = selectedStyle.animation === 'karaoke-highlight' && editableWords[getActiveWordIndex(editableWords, currentTime)]?.word === visual.word.word;
+        const text = displayText(visual.word.word);
+        const wordWidth = context.measureText(text).width;
+        const isHighlighted = selectedStyle.animation === 'karaoke-highlight' && editableWords[activeWordIndexNow]?.word === visual.word.word;
+        const isActiveBoxWord = selectedStyle.animation === 'highlight-box' && editableWords[activeWordIndexNow] === visual.word;
 
         context.save();
         context.globalAlpha = visual.opacity;
@@ -380,14 +407,39 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
         context.scale(visual.scale, visual.scale);
         context.translate(-(cursorX + wordWidth / 2), -(lineY + fontSize / 2));
 
+        if (isActiveBoxWord && selectedStyle.activeBackgroundColor) {
+          const boxPaddingX = fontSize * 0.28;
+          const boxPaddingY = fontSize * 0.18;
+          context.fillStyle = selectedStyle.activeBackgroundColor;
+          drawRoundedRect(
+            context,
+            cursorX - boxPaddingX,
+            lineY - boxPaddingY,
+            wordWidth + boxPaddingX * 2,
+            fontSize + boxPaddingY * 2,
+            10
+          );
+          context.fill();
+        }
+
+        if (selectedStyle.animation === 'glow-pulse' && selectedStyle.glowColor) {
+          context.shadowColor = selectedStyle.glowColor;
+          context.shadowBlur = selectedStyle.glowBlur ?? 24;
+        }
+
         if (selectedStyle.strokeWidth > 0) {
           context.lineWidth = selectedStyle.strokeWidth;
           context.strokeStyle = selectedStyle.strokeColor;
-          context.strokeText(visual.word.word, cursorX, lineY + visual.yOffset);
+          context.strokeText(text, cursorX, lineY + visual.yOffset);
         }
 
         context.fillStyle = isHighlighted ? highlightColor : visual.color;
-        context.fillText(visual.word.word, cursorX, lineY + visual.yOffset);
+        context.fillText(text, cursorX, lineY + visual.yOffset);
+
+        if (selectedStyle.animation === 'glow-pulse') {
+          context.shadowBlur = 0;
+        }
+
         context.restore();
 
         cursorX += wordWidth;
