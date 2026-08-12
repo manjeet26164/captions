@@ -27,7 +27,7 @@ type CaptionWordVisual = {
 };
 
 const highlightColor = '#fde68a';
-const defaultWindowSize = 7;
+const defaultWordsPerGroup = 3;
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -57,15 +57,15 @@ function getActiveWordIndex(wordTimestamps: WordTimestamp[], currentTime: number
   return candidate;
 }
 
-function getVisibleWindow(wordTimestamps: WordTimestamp[], activeIndex: number) {
+function getVisibleGroup(wordTimestamps: WordTimestamp[], activeIndex: number, groupSize: number) {
   if (activeIndex < 0 || wordTimestamps.length === 0) {
     return [];
   }
 
-  const halfWindow = Math.floor(defaultWindowSize / 2);
-  const start = Math.max(0, activeIndex - halfWindow);
-  const end = Math.min(wordTimestamps.length, start + defaultWindowSize);
-  return wordTimestamps.slice(start, end);
+  const safeGroupSize = Math.max(1, groupSize);
+  const groupStart = Math.floor(activeIndex / safeGroupSize) * safeGroupSize;
+  const groupEnd = Math.min(wordTimestamps.length, groupStart + safeGroupSize);
+  return wordTimestamps.slice(groupStart, groupEnd);
 }
 
 function drawRoundedRect(
@@ -329,7 +329,7 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
 
     const currentTime = video.currentTime;
     const activeIndex = getActiveWordIndex(editableWords, currentTime);
-    const visibleWords = getVisibleWindow(editableWords, activeIndex);
+    const visibleWords = getVisibleGroup(editableWords, activeIndex, selectedStyle.wordsPerGroup ?? defaultWordsPerGroup);
     const visuals = createWordVisuals(selectedStyle, visibleWords, activeIndex, currentTime).filter(
       (item) => item.shouldRender
     );

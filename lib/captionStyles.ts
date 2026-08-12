@@ -29,6 +29,8 @@ export type CaptionStylePreset = {
   activeColor?: string;
   /** Pill/box background color drawn behind the active word for `highlight-box`. */
   activeBackgroundColor?: string;
+  /** How many words are shown on screen together (CapCut-style chunking). Defaults to 3. */
+  wordsPerGroup?: number;
 };
 
 export const captionStylePresets: CaptionStylePreset[] = [
@@ -41,7 +43,8 @@ export const captionStylePresets: CaptionStylePreset[] = [
     strokeWidth: 8,
     backgroundColor: 'rgba(0, 0, 0, 0.28)',
     animation: 'pop',
-    position: 'bottom'
+    position: 'bottom',
+    wordsPerGroup: 3
   },
   {
     name: 'karaoke-highlight',
@@ -52,7 +55,8 @@ export const captionStylePresets: CaptionStylePreset[] = [
     strokeWidth: 7,
     backgroundColor: 'rgba(2, 6, 23, 0.32)',
     animation: 'karaoke-highlight',
-    position: 'bottom'
+    position: 'bottom',
+    wordsPerGroup: 4
   },
   {
     name: 'fade',
@@ -62,7 +66,8 @@ export const captionStylePresets: CaptionStylePreset[] = [
     strokeColor: '#111827',
     strokeWidth: 6,
     animation: 'fade',
-    position: 'center'
+    position: 'center',
+    wordsPerGroup: 4
   },
   {
     name: 'bounce',
@@ -73,7 +78,8 @@ export const captionStylePresets: CaptionStylePreset[] = [
     strokeWidth: 8,
     backgroundColor: 'rgba(17, 24, 39, 0.28)',
     animation: 'bounce',
-    position: 'top'
+    position: 'top',
+    wordsPerGroup: 3
   },
   {
     name: 'typewriter',
@@ -84,7 +90,8 @@ export const captionStylePresets: CaptionStylePreset[] = [
     strokeWidth: 5,
     backgroundColor: 'rgba(15, 23, 42, 0.18)',
     animation: 'typewriter',
-    position: 'bottom'
+    position: 'bottom',
+    wordsPerGroup: 5
   },
   {
     name: 'minimal',
@@ -95,7 +102,8 @@ export const captionStylePresets: CaptionStylePreset[] = [
     strokeWidth: 7,
     backgroundColor: 'rgba(6, 78, 59, 0.24)',
     animation: 'fade',
-    position: 'center'
+    position: 'center',
+    wordsPerGroup: 4
   },
   {
     name: 'mrbeast',
@@ -108,7 +116,8 @@ export const captionStylePresets: CaptionStylePreset[] = [
     position: 'center',
     uppercase: true,
     activeColor: '#000000',
-    activeBackgroundColor: '#FFE600'
+    activeBackgroundColor: '#FFE600',
+    wordsPerGroup: 2
   },
   {
     name: 'glow-yellow',
@@ -121,7 +130,8 @@ export const captionStylePresets: CaptionStylePreset[] = [
     position: 'bottom',
     uppercase: true,
     glowColor: '#FACC15',
-    glowBlur: 28
+    glowBlur: 28,
+    wordsPerGroup: 3
   },
   {
     name: 'neon-glow',
@@ -133,7 +143,8 @@ export const captionStylePresets: CaptionStylePreset[] = [
     animation: 'glow-pulse',
     position: 'center',
     glowColor: '#C026D3',
-    glowBlur: 32
+    glowBlur: 32,
+    wordsPerGroup: 3
   },
   {
     name: 'hinglish-highlight',
@@ -145,7 +156,8 @@ export const captionStylePresets: CaptionStylePreset[] = [
     animation: 'highlight-box',
     position: 'bottom',
     activeColor: '#000000',
-    activeBackgroundColor: '#22D3EE'
+    activeBackgroundColor: '#22D3EE',
+    wordsPerGroup: 3
   },
   {
     name: 'break-the-cage',
@@ -158,6 +170,7 @@ export const captionStylePresets: CaptionStylePreset[] = [
     position: 'center',
     uppercase: true,
     activeColor: '#000000',
-    activeBackgroundColor: '#4ADE80'
+    activeBackgroundColor: '#4ADE80',
+    wordsPerGroup: 2
   }
 ];

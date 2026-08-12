@@ -139,22 +139,50 @@ function getAnimationOverride(style: CaptionStylePreset) {
   }
 }
 
+function dimHexColor(hex: string, factor: number) {
+  const normalized = hex.trim().replace(/^#/, '');
+  const full = normalized.length === 3
+    ? normalized.split('').map((char) => `${char}${char}`).join('')
+    : normalized;
+
+  if (!/^([0-9a-fA-F]{6})$/.test(full)) {
+    return hex;
+  }
+
+  const channel = (start: number) => Math.round(parseInt(full.slice(start, start + 2), 16) * factor);
+  const toHex = (value: number) => clamp(value, 0, 255).toString(16).padStart(2, '0');
+
+  return `#${toHex(channel(0))}${toHex(channel(2))}${toHex(channel(4))}`;
+}
+
 function getBorderStyle(style: CaptionStylePreset) {
-  return style.backgroundColor || style.animation === 'highlight-box' ? 3 : 1;
+  return style.backgroundColor ? 3 : 1;
 }
 
 function buildStyleLine(style: CaptionStylePreset) {
   const fontName = normalizeFontName(style.fontFamily);
+  const isKaraoke = style.animation === 'karaoke-highlight';
   const isHighlightBox = style.animation === 'highlight-box';
   const isGlow = style.animation === 'glow-pulse';
 
-  const primaryColour = hexToAssColor(isHighlightBox ? style.activeColor ?? style.color : style.color);
-  const secondaryColour = hexToAssColor(style.color);
+  let primaryColour: string;
+  let secondaryColour: string;
+
+  if (isKaraoke) {
+    // \k karaoke tags reveal Primary colour over Secondary as each word plays.
+    primaryColour = hexToAssColor(style.color);
+    secondaryColour = hexToAssColor(dimHexColor(style.color, 0.5));
+  } else if (isHighlightBox) {
+    primaryColour = hexToAssColor(style.activeBackgroundColor ?? style.color);
+    secondaryColour = hexToAssColor(style.color);
+  } else {
+    primaryColour = hexToAssColor(style.color);
+    secondaryColour = hexToAssColor(style.color);
+  }
+
   const outlineColour = hexToAssColor(isGlow && style.glowColor ? style.glowColor : style.strokeColor);
-  const backColour = isHighlightBox
-    ? hexToAssColor(style.activeBackgroundColor ?? '#FFE600')
-    : rgbaToAssColor(style.backgroundColor);
-  const hasOpaqueBox = Boolean(style.backgroundColor) || isHighlightBox;
+  const backColour = rgbaToAssColor(style.backgroundColor);
+  const hasOpaqueBox = Boolean(style.backgroundColor);
   const outline = hasOpaqueBox ? 0 : isGlow ? Math.max(3, Math.round(style.strokeWidth / 2)) : Math.max(2, Math.round(style.strokeWidth / 3));
   const shadow = hasOpaqueBox ? 0 : 1;
 
@@ -185,6 +213,47 @@ function buildStyleLine(style: CaptionStylePreset) {
   ].join(',');
 }
 
+const defaultWordsPerGroup = 3;
+
+function groupWords(words: WordTimestamp[], groupSize: number) {
+  const safeGroupSize = Math.max(1, groupSize);
+  const groups: WordTimestamp[][] = [];
+
+  for (let index = 0; index < words.length; index += safeGroupSize) {
+    groups.push(words.slice(index, index + safeGroupSize));
+  }
+
+  return groups;
+}
+
+function buildGroupText(
+  group: WordTimestamp[],
+  style: CaptionStylePreset,
+  positionOverride: string
+) {
+  const usesKaraoke = style.animation === 'karaoke-highlight' || style.animation === 'highlight-box';
+  const toDisplayWord = (word: string) => escapeAssText(style.uppercase ? word.trim().toUpperCase() : word.trim());
+
+  if (!usesKaraoke) {
+    const animationTag = getAnimationOverride(style);
+    const joined = group.map((word) => toDisplayWord(word.word)).join(' ');
+    return `${positionOverride}${animationTag}${joined}`;
+  }
+
+  const groupStart = group[0].start;
+  const fadeTag = '\\fad(30,30)';
+  const karaokeSyllables = group
+    .map((word, index) => {
+      const nextWord = group[index + 1];
+      const segmentEnd = nextWord ? nextWord.start : word.end;
+      const durationCentiseconds = Math.max(1, Math.round((segmentEnd - word.start) * 100));
+      return `{\\k${durationCentiseconds}}${toDisplayWord(word.word)}`;
+    })
+    .join(' ');
+
+  return `${positionOverride}{${fadeTag}}${karaokeSyllables}`;
+}
+
 export function buildAssSubtitleFile(
   wordTimestamps: WordTimestamp[],
   style: CaptionStylePreset,
@@ -207,15 +276,16 @@ export function buildAssSubtitleFile(
   ];
 
   const positionOverride = buildPositionOverride(style.position, offset);
+  const cleanWords = wordTimestamps.filter((word) => word.word.trim().length > 0);
+  const groups = groupWords(cleanWords, style.wordsPerGroup ?? defaultWordsPerGroup);
 
-  const dialogue = wordTimestamps
-    .filter((word) => word.word.trim().length > 0)
-    .map((word) => {
-      const start = Math.max(0, word.start);
-      const end = Math.max(start + 0.05, word.end);
-      const animationTag = getAnimationOverride(style);
-      const rawWord = style.uppercase ? word.word.trim().toUpperCase() : word.word.trim();
-      const text = `${positionOverride}${animationTag}${escapeAssText(rawWord)}`;
+  const dialogue = groups
+    .filter((group) => group.length > 0)
+    .map((group) => {
+      const start = Math.max(0, group[0].start);
+      const lastWord = group[group.length - 1];
+      const end = Math.max(start + 0.05, lastWord.end);
+      const text = buildGroupText(group, style, positionOverride);
 
       return `Dialogue: 0,${toAssTimestamp(start)},${toAssTimestamp(end)},Default,,0,0,0,,${text}`;
     });
