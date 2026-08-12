@@ -1,6 +1,7 @@
 import Groq from 'groq-sdk';
 import ffmpegStatic from 'ffmpeg-static';
 import ffmpeg from 'fluent-ffmpeg';
+import sanscript from '@indic-transliteration/sanscript';
 import { createReadStream } from 'node:fs';
 import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -8,6 +9,9 @@ import path from 'node:path';
 
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 const AUDIO_BITRATES_KBPS = [64, 48, 32, 24];
+
+// Matches Devanagari script characters (the block Hindi/Marathi/Sanskrit use).
+const devanagariPattern = /[\u0900-\u097F]/;
 
 if (ffmpegStatic) {
   ffmpeg.setFfmpegPath(ffmpegStatic as string);
@@ -20,6 +24,22 @@ type TranscriptWord = {
   start: number;
   end: number;
 };
+
+/**
+ * Groq's Whisper sometimes ignores the `language: 'en'` hint on Hindi-heavy audio
+ * and returns Devanagari script anyway. This romanizes any Devanagari it finds so
+ * the final transcript is always Hinglish (Roman letters), never Hindi script —
+ * matching what Whisper already did correctly for the rest of the sentence.
+ */
+function toHinglish(word: string) {
+  if (!devanagariPattern.test(word)) {
+    return word;
+  }
+
+  const romanized = sanscript.t(word, 'devanagari', 'itrans').toLowerCase();
+  // Strip any leftover Devanagari marks (e.g. nukta) that ITRANS doesn't map 1:1.
+  return romanized.replace(devanagariPattern, '');
+}
 
 function getApiKey() {
   const apiKey = process.env.GROQ_API_KEY;
@@ -50,7 +70,7 @@ function toTranscriptWords(value: unknown): TranscriptWord[] {
       throw new Error('Invalid transcript entry returned by Groq.');
     }
 
-    return { word, start, end };
+    return { word: toHinglish(word), start, end };
   });
 }
 
