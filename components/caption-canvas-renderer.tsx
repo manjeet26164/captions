@@ -24,6 +24,8 @@ type CaptionWordVisual = {
   yOffset: number;
   color: string;
   shouldRender: boolean;
+  /** Index of this word inside the currently visible group, used to pick a wordStyleVariants entry. */
+  groupIndex: number;
 };
 
 const highlightColor = '#fde68a';
@@ -131,7 +133,8 @@ function createWordVisuals(
         scale: 1,
         yOffset: 0,
         color: style.color,
-        shouldRender: false
+        shouldRender: false,
+        groupIndex: index
       };
     }
 
@@ -142,7 +145,8 @@ function createWordVisuals(
         scale: isActive ? 1.08 : 1,
         yOffset: 0,
         color: isActive ? highlightColor : style.color,
-        shouldRender: true
+        shouldRender: true,
+        groupIndex: index
       };
     }
 
@@ -153,7 +157,8 @@ function createWordVisuals(
         scale: isActive ? 1.12 - progress * 0.04 : 1,
         yOffset: 0,
         color: style.color,
-        shouldRender: true
+        shouldRender: true,
+        groupIndex: index
       };
     }
 
@@ -164,7 +169,8 @@ function createWordVisuals(
         scale: 1,
         yOffset: isActive ? -8 - progress * 4 : 0,
         color: style.color,
-        shouldRender: true
+        shouldRender: true,
+        groupIndex: index
       };
     }
 
@@ -175,7 +181,8 @@ function createWordVisuals(
         scale: isActive ? 1.06 : 1,
         yOffset: 0,
         color: style.color,
-        shouldRender: true
+        shouldRender: true,
+        groupIndex: index
       };
     }
 
@@ -186,7 +193,8 @@ function createWordVisuals(
         scale: isActive ? 1.05 : 1,
         yOffset: 0,
         color: isActive ? (style.activeColor ?? style.color) : style.color,
-        shouldRender: true
+        shouldRender: true,
+        groupIndex: index
       };
     }
 
@@ -196,9 +204,28 @@ function createWordVisuals(
       scale: 1,
       yOffset: 0,
       color: style.color,
-      shouldRender: true
+      shouldRender: true,
+      groupIndex: index
     };
   });
+}
+
+/** Picks the per-word font/color/position override for a "stylish" preset, cycling through wordStyleVariants. */
+function getWordVariant(style: CaptionStylePreset, groupIndex: number) {
+  const variants = style.wordStyleVariants;
+  if (!variants || variants.length === 0) {
+    return undefined;
+  }
+  return variants[groupIndex % variants.length];
+}
+
+/** Builds a canvas font string for a word, honoring a wordStyleVariants override where present. */
+function buildWordFont(style: CaptionStylePreset, variant: ReturnType<typeof getWordVariant>) {
+  const weight = variant?.fontWeight ?? '700';
+  const fontStyle = variant?.fontStyle === 'italic' ? 'italic ' : '';
+  const size = Math.round(style.fontSize * (variant?.scale ?? 1));
+  const family = variant?.fontFamily ?? style.fontFamily;
+  return `${fontStyle}${weight} ${size}px ${family}`;
 }
 
 export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, className }: CaptionCanvasRendererProps) {
@@ -339,9 +366,13 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
     }
 
     const fontSize = selectedStyle.fontSize;
-    const lineHeight = fontSize * 1.45;
+    const hasWordVariants = Boolean(selectedStyle.wordStyleVariants?.length);
+    const maxVariantScale = hasWordVariants
+      ? Math.max(1, ...selectedStyle.wordStyleVariants!.map((variant) => variant.scale ?? 1))
+      : 1;
+    const lineHeight = fontSize * 1.45 * maxVariantScale;
     const textPaddingX = Math.max(20, fontSize * 0.65);
-    const textPaddingY = Math.max(12, fontSize * 0.38);
+    const textPaddingY = Math.max(12, fontSize * 0.38 * maxVariantScale);
     const maxTextWidth = cssWidth * 0.84;
 
     context.font = `700 ${fontSize}px ${selectedStyle.fontFamily}`;
@@ -358,6 +389,8 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
     let currentLineWidth = 0;
 
     visuals.forEach((visual) => {
+      const wordVariant = getWordVariant(selectedStyle, visual.groupIndex);
+      context.font = buildWordFont(selectedStyle, wordVariant);
       const wordWidth = context.measureText(displayText(visual.word.word)).width;
       const nextWidth = currentLine.length === 0 ? wordWidth : currentLineWidth + spaceWidth + wordWidth;
 
@@ -406,15 +439,22 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
 
       line.words.forEach((visual, index) => {
         const text = displayText(visual.word.word);
+        const wordVariant = getWordVariant(selectedStyle, visual.groupIndex);
+        context.font = buildWordFont(selectedStyle, wordVariant);
         const wordWidth = context.measureText(text).width;
         const isHighlighted = selectedStyle.animation === 'karaoke-highlight' && editableWords[activeWordIndexNow]?.word === visual.word.word;
         const isActiveBoxWord = selectedStyle.animation === 'highlight-box' && editableWords[activeWordIndexNow] === visual.word;
+        const wordYOffset = visual.yOffset + (wordVariant?.yOffset ?? 0);
+        const rotationRadians = ((wordVariant?.rotation ?? 0) * Math.PI) / 180;
+        const wordCenterX = cursorX + wordWidth / 2;
+        const wordCenterY = lineY + fontSize / 2;
 
         context.save();
         context.globalAlpha = visual.opacity;
-        context.translate(cursorX + wordWidth / 2, lineY + fontSize / 2);
+        context.translate(wordCenterX, wordCenterY);
+        context.rotate(rotationRadians);
         context.scale(visual.scale, visual.scale);
-        context.translate(-(cursorX + wordWidth / 2), -(lineY + fontSize / 2));
+        context.translate(-wordCenterX, -wordCenterY);
 
         if (isActiveBoxWord && selectedStyle.activeBackgroundColor) {
           const boxPaddingX = fontSize * 0.28;
@@ -436,14 +476,15 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
           context.shadowBlur = selectedStyle.glowBlur ?? 24;
         }
 
-        if (selectedStyle.strokeWidth > 0) {
-          context.lineWidth = selectedStyle.strokeWidth;
+        const strokeWidth = wordVariant?.strokeWidth ?? selectedStyle.strokeWidth;
+        if (strokeWidth > 0) {
+          context.lineWidth = strokeWidth;
           context.strokeStyle = selectedStyle.strokeColor;
-          context.strokeText(text, cursorX, lineY + visual.yOffset);
+          context.strokeText(text, cursorX, lineY + wordYOffset);
         }
 
-        context.fillStyle = isHighlighted ? highlightColor : visual.color;
-        context.fillText(text, cursorX, lineY + visual.yOffset);
+        context.fillStyle = isHighlighted ? highlightColor : (wordVariant?.color ?? visual.color);
+        context.fillText(text, cursorX, lineY + wordYOffset);
 
         if (selectedStyle.animation === 'glow-pulse') {
           context.shadowBlur = 0;

@@ -226,6 +226,39 @@ function groupWords(words: WordTimestamp[], groupSize: number) {
   return groups;
 }
 
+/** Builds the inline ASS override tag for one word using its wordStyleVariants entry, if the preset defines any. */
+function buildWordVariantTag(style: CaptionStylePreset, groupIndex: number) {
+  const variants = style.wordStyleVariants;
+  if (!variants || variants.length === 0) {
+    return '';
+  }
+
+  const variant = variants[groupIndex % variants.length];
+  const tags: string[] = [];
+
+  tags.push(variant.fontWeight && Number(variant.fontWeight) >= 700 ? '\\b1' : '\\b0');
+  tags.push(variant.fontStyle === 'italic' ? '\\i1' : '\\i0');
+
+  if (variant.fontFamily) {
+    tags.push(`\\fn${normalizeFontName(variant.fontFamily)}`);
+  }
+
+  if (variant.scale) {
+    const scalePercent = Math.round(variant.scale * 100);
+    tags.push(`\\fscx${scalePercent}\\fscy${scalePercent}`);
+  }
+
+  if (variant.rotation) {
+    tags.push(`\\frz${variant.rotation}`);
+  }
+
+  if (variant.color) {
+    tags.push(`\\c${hexToAssColor(variant.color)}`);
+  }
+
+  return tags.length > 0 ? `{${tags.join('')}}` : '';
+}
+
 function buildGroupText(
   group: WordTimestamp[],
   style: CaptionStylePreset,
@@ -233,6 +266,15 @@ function buildGroupText(
 ) {
   const usesKaraoke = style.animation === 'karaoke-highlight' || style.animation === 'highlight-box';
   const toDisplayWord = (word: string) => escapeAssText(style.uppercase ? word.trim().toUpperCase() : word.trim());
+  const hasWordVariants = Boolean(style.wordStyleVariants?.length);
+
+  if (!usesKaraoke && hasWordVariants) {
+    const animationTag = getAnimationOverride(style);
+    const joined = group
+      .map((word, index) => `${buildWordVariantTag(style, index)}${toDisplayWord(word.word)}{\\r}`)
+      .join(' ');
+    return `${positionOverride}${animationTag}${joined}`;
+  }
 
   if (!usesKaraoke) {
     const animationTag = getAnimationOverride(style);

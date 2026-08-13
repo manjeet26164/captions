@@ -9,6 +9,31 @@ export type CaptionAnimation =
 
 export type CaptionPosition = 'top' | 'center' | 'bottom';
 
+/**
+ * Per-word style override used by "stylish" CapCut-style presets, where every
+ * word inside a group gets a different font weight/style/size/color and a
+ * slight position wobble instead of one uniform look for the whole group.
+ * Variants are applied by cycling through this array using the word's index
+ * inside the currently visible group (index % variants.length).
+ */
+export type WordStyleVariant = {
+  /** CSS font-weight, e.g. '400' (thin) or '900' (extra bold). */
+  fontWeight?: string;
+  fontStyle?: 'normal' | 'italic';
+  /** Overrides the preset's fontFamily just for this word. */
+  fontFamily?: string;
+  /** Multiplier applied to the preset's base fontSize. */
+  scale?: number;
+  /** Vertical pixel shift (negative = up) for a staggered, stylish look. */
+  yOffset?: number;
+  /** Rotation in degrees for a playful tilted-word look. */
+  rotation?: number;
+  /** Overrides the preset's fill color just for this word. */
+  color?: string;
+  /** Overrides the preset's stroke width just for this word. */
+  strokeWidth?: number;
+};
+
 export type CaptionStylePreset = {
   name: string;
   fontFamily: string;
@@ -31,6 +56,8 @@ export type CaptionStylePreset = {
   activeBackgroundColor?: string;
   /** How many words are shown on screen together (CapCut-style chunking). Defaults to 3. */
   wordsPerGroup?: number;
+  /** Per-word font/position variants, cycled across the visible group (CapCut "stylish" look). */
+  wordStyleVariants?: WordStyleVariant[];
 };
 
 export const captionStylePresets: CaptionStylePreset[] = [
@@ -158,6 +185,25 @@ export const captionStylePresets: CaptionStylePreset[] = [
     activeColor: '#000000',
     activeBackgroundColor: '#22D3EE',
     wordsPerGroup: 3
+  },
+  {
+    name: 'stylish-mix',
+    fontFamily: 'Poppins, Arial, sans-serif',
+    fontSize: 38,
+    color: '#FFFFFF',
+    strokeColor: '#000000',
+    strokeWidth: 9,
+    animation: 'pop',
+    position: 'bottom',
+    uppercase: true,
+    wordsPerGroup: 5,
+    wordStyleVariants: [
+      { fontWeight: '900', fontStyle: 'normal', scale: 1.12, yOffset: -4, rotation: -3, color: '#FFFFFF' },
+      { fontWeight: '900', fontStyle: 'normal', scale: 1.05, yOffset: 6, rotation: 2, color: '#FDE047' },
+      { fontWeight: '400', fontStyle: 'italic', fontFamily: 'Georgia, "Times New Roman", serif', scale: 0.86, yOffset: 3, rotation: -5, color: '#22D3EE' },
+      { fontWeight: '900', fontStyle: 'normal', scale: 1.1, yOffset: -6, rotation: 4, color: '#F472B6' },
+      { fontWeight: '400', fontStyle: 'italic', fontFamily: 'Georgia, "Times New Roman", serif', scale: 0.9, yOffset: 5, rotation: -2, color: '#FFFFFF' }
+    ]
   },
   {
     name: 'break-the-cage',
