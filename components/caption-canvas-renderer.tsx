@@ -1,7 +1,7 @@
 'use client';
 
 import { useCaptionStyle } from '@/components/caption-style-provider';
-import type { CaptionStylePreset } from '@/lib/captionStyles';
+import { captionFontOptions, type CaptionStylePreset } from '@/lib/captionStyles';
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 
 export type WordTimestamp = {
@@ -239,16 +239,31 @@ function chunkWordsIntoLines<T>(items: T[], size: number) {
 }
 
 /** Builds a canvas font string for a word, honoring a wordStyleVariants override where present. */
-function buildWordFont(style: CaptionStylePreset, variant: ReturnType<typeof getWordVariant>, baseFontSize: number) {
+function buildWordFont(
+  style: CaptionStylePreset,
+  variant: ReturnType<typeof getWordVariant>,
+  baseFontSize: number,
+  fontOverride?: string | null
+) {
   const weight = variant?.fontWeight ?? '700';
   const fontStyle = variant?.fontStyle === 'italic' ? 'italic ' : '';
   const size = Math.round(baseFontSize * (variant?.scale ?? 1));
-  const family = variant?.fontFamily ?? style.fontFamily;
+  const family = fontOverride || variant?.fontFamily || style.fontFamily;
   return `${fontStyle}${weight} ${size}px ${family}`;
 }
 
 export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, className }: CaptionCanvasRendererProps) {
-  const { selectedStyle, captionOffset, setCaptionOffset, captionScale, setCaptionScale } = useCaptionStyle();
+  const {
+    selectedStyle,
+    captionOffset,
+    setCaptionOffset,
+    captionScale,
+    setCaptionScale,
+    captionFontFamily,
+    setCaptionFontFamily,
+    captionLineSpacing,
+    setCaptionLineSpacing
+  } = useCaptionStyle();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const frameRef = useRef<number | null>(null);
@@ -395,12 +410,12 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
     const maxVariantScale = activeVariantSet
       ? Math.max(1, ...activeVariantSet.map((variant) => variant.scale ?? 1))
       : 1;
-    const lineHeight = fontSize * 1.45 * maxVariantScale;
+    const lineHeight = fontSize * 1.45 * maxVariantScale * captionLineSpacing;
     const textPaddingX = Math.max(20, fontSize * 0.65);
     const textPaddingY = Math.max(12, fontSize * 0.38 * maxVariantScale);
     const maxTextWidth = cssWidth * 0.84;
 
-    context.font = `700 ${fontSize}px ${selectedStyle.fontFamily}`;
+    context.font = `700 ${fontSize}px ${captionFontFamily || selectedStyle.fontFamily}`;
     context.textBaseline = 'top';
     context.textAlign = 'left';
     context.lineJoin = 'round';
@@ -418,7 +433,7 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
       const chunks = chunkWordsIntoLines(visuals, selectedStyle.wordsPerLine!);
       chunks.forEach((chunk, lineIndex) => {
         const lineVariant = getLineVariant(selectedStyle, lineIndex);
-        context.font = buildWordFont(selectedStyle, lineVariant, fontSize);
+        context.font = buildWordFont(selectedStyle, lineVariant, fontSize, captionFontFamily);
         let width = 0;
         chunk.forEach((visual, wordIndex) => {
           width += context.measureText(displayText(visual.word.word)).width;
@@ -434,7 +449,7 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
 
       visuals.forEach((visual) => {
         const wordVariant = getWordVariant(selectedStyle, visual.groupIndex);
-        context.font = buildWordFont(selectedStyle, wordVariant, fontSize);
+        context.font = buildWordFont(selectedStyle, wordVariant, fontSize, captionFontFamily);
         const wordWidth = context.measureText(displayText(visual.word.word)).width;
         const nextWidth = currentLine.length === 0 ? wordWidth : currentLineWidth + spaceWidth + wordWidth;
 
@@ -486,7 +501,7 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
       line.words.forEach((visual, index) => {
         const text = displayText(visual.word.word);
         const wordVariant = lineVariant ?? getWordVariant(selectedStyle, visual.groupIndex);
-        context.font = buildWordFont(selectedStyle, wordVariant, fontSize);
+        context.font = buildWordFont(selectedStyle, wordVariant, fontSize, captionFontFamily);
         const wordWidth = context.measureText(text).width;
         const isHighlighted = selectedStyle.animation === 'karaoke-highlight' && editableWords[activeWordIndexNow]?.word === visual.word.word;
         const isActiveBoxWord = selectedStyle.animation === 'highlight-box' && editableWords[activeWordIndexNow] === visual.word;
@@ -544,7 +559,7 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
         }
       });
     });
-  }, [editableWords, selectedStyle, captionOffset, captionScale]);
+  }, [editableWords, selectedStyle, captionOffset, captionScale, captionFontFamily, captionLineSpacing]);
 
   const handleTimelineSeek = useCallback((time: number) => {
     const video = videoRef.current;
@@ -704,6 +719,7 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
       formData.append('style', JSON.stringify(selectedStyle));
       formData.append('offsetY', String(captionOffset));
       formData.append('scale', String(captionScale));
+      formData.append('fontFamily', captionFontFamily ?? '');
 
       const response = await fetch('/api/render', {
         method: 'POST',
@@ -727,7 +743,7 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
     } finally {
       setIsExporting(false);
     }
-  }, [downloadBlob, editableWords, isExporting, selectedStyle, sourceFile, captionOffset, captionScale]);
+  }, [downloadBlob, editableWords, isExporting, selectedStyle, sourceFile, captionOffset, captionScale, captionFontFamily]);
 
   const handleCaptionDragStart = useCallback((clientY: number) => {
     dragStateRef.current = { startClientY: clientY, startOffset: captionOffset };
@@ -847,6 +863,60 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
           <button
             type="button"
             onClick={() => setCaptionScale(1)}
+            className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/10"
+          >
+            Reset
+          </button>
+        </div>
+      ) : null}
+
+      {hasWords ? (
+        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
+          <span className="whitespace-nowrap text-xs uppercase tracking-[0.28em] text-slate-400">
+            Line spacing
+          </span>
+          <input
+            type="range"
+            min={60}
+            max={140}
+            step={2}
+            value={Math.round(captionLineSpacing * 100)}
+            onChange={(event) => setCaptionLineSpacing(clamp(Number(event.target.value) / 100, 0.6, 1.4))}
+            className="h-1.5 flex-1 min-w-[8rem] accent-cyan-400"
+          />
+          <span className="w-12 shrink-0 text-right text-xs text-slate-400">
+            {Math.round(captionLineSpacing * 100)}%
+          </span>
+          <button
+            type="button"
+            onClick={() => setCaptionLineSpacing(0.85)}
+            className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/10"
+          >
+            Reset
+          </button>
+        </div>
+      ) : null}
+
+      {hasWords ? (
+        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
+          <span className="whitespace-nowrap text-xs uppercase tracking-[0.28em] text-slate-400">
+            Caption font
+          </span>
+          <select
+            value={captionFontFamily ?? ''}
+            onChange={(event) => setCaptionFontFamily(event.target.value || null)}
+            className="min-w-[10rem] flex-1 rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-cyan-300/60"
+          >
+            <option value="">Style default</option>
+            {captionFontOptions.map((font) => (
+              <option key={font.value} value={font.value}>
+                {font.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => setCaptionFontFamily(null)}
             className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/10"
           >
             Reset

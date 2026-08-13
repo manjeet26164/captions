@@ -224,7 +224,7 @@ export const captionStylePresets: CaptionStylePreset[] = [
     color: '#FFFFFF',
     strokeColor: '#000000',
     strokeWidth: 6,
-    animation: 'pop',
+    animation: 'typewriter',
     position: 'center',
     wordsPerGroup: 10,
     wordsPerLine: 2,
@@ -250,4 +250,25 @@ export const captionStylePresets: CaptionStylePreset[] = [
     activeBackgroundColor: '#4ADE80',
     wordsPerGroup: 2
   }
+];
+
+/**
+ * Curated fonts for the global "Caption font" picker. When the user picks one, it overrides
+ * every word/line's font family (including per-line variant fonts like the cascade preset's
+ * italic line) so the whole caption renders consistently in that one chosen font.
+ */
+export const captionFontOptions: { label: string; value: string }[] = [
+  { label: 'Poppins', value: 'Poppins, Arial, sans-serif' },
+  { label: 'Montserrat', value: 'Montserrat, Arial, sans-serif' },
+  { label: 'Inter', value: 'Inter, Arial, sans-serif' },
+  { label: 'Manrope', value: 'Manrope, Arial, sans-serif' },
+  { label: 'Arial Black', value: 'Arial Black, Arial, sans-serif' },
+  { label: 'SF Pro Display', value: 'SF Pro Display, Arial, sans-serif' },
+  { label: 'Verdana', value: 'Verdana, Geneva, sans-serif' },
+  { label: 'Times New Roman', value: '"Times New Roman", Georgia, serif' },
+  { label: 'Georgia', value: 'Georgia, "Times New Roman", serif' },
+  { label: 'Comic Sans MS', value: '"Comic Sans MS", "Comic Sans", cursive' },
+  { label: 'Impact', value: 'Impact, "Arial Black", sans-serif' },
+  { label: 'Courier New', value: '"Courier New", Courier, monospace' },
+  { label: 'Brush Script (cursive)', value: '"Brush Script MT", cursive' }
 ];

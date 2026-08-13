@@ -227,7 +227,7 @@ function groupWords(words: WordTimestamp[], groupSize: number) {
 }
 
 /** Builds the inline ASS override tag for one word using its wordStyleVariants entry, if the preset defines any. */
-function buildWordVariantTag(style: CaptionStylePreset, groupIndex: number) {
+function buildWordVariantTag(style: CaptionStylePreset, groupIndex: number, fontOverride?: string | null) {
   const variants = style.wordStyleVariants;
   if (!variants || variants.length === 0) {
     return '';
@@ -239,8 +239,9 @@ function buildWordVariantTag(style: CaptionStylePreset, groupIndex: number) {
   tags.push(variant.fontWeight && Number(variant.fontWeight) >= 700 ? '\\b1' : '\\b0');
   tags.push(variant.fontStyle === 'italic' ? '\\i1' : '\\i0');
 
-  if (variant.fontFamily) {
-    tags.push(`\\fn${normalizeFontName(variant.fontFamily)}`);
+  const effectiveFont = fontOverride || variant.fontFamily;
+  if (effectiveFont) {
+    tags.push(`\\fn${normalizeFontName(effectiveFont)}`);
   }
 
   if (variant.scale) {
@@ -260,7 +261,7 @@ function buildWordVariantTag(style: CaptionStylePreset, groupIndex: number) {
 }
 
 /** Builds the inline ASS override tag for one LINE using its lineStyleVariants entry, if the preset defines any. */
-function buildLineVariantTag(style: CaptionStylePreset, lineIndex: number) {
+function buildLineVariantTag(style: CaptionStylePreset, lineIndex: number, fontOverride?: string | null) {
   const variants = style.lineStyleVariants;
   if (!variants || variants.length === 0) {
     return '';
@@ -272,8 +273,9 @@ function buildLineVariantTag(style: CaptionStylePreset, lineIndex: number) {
   tags.push(variant.fontWeight && Number(variant.fontWeight) >= 700 ? '\\b1' : '\\b0');
   tags.push(variant.fontStyle === 'italic' ? '\\i1' : '\\i0');
 
-  if (variant.fontFamily) {
-    tags.push(`\\fn${normalizeFontName(variant.fontFamily)}`);
+  const effectiveFont = fontOverride || variant.fontFamily;
+  if (effectiveFont) {
+    tags.push(`\\fn${normalizeFontName(effectiveFont)}`);
   }
 
   if (variant.scale) {
@@ -291,7 +293,8 @@ function buildLineVariantTag(style: CaptionStylePreset, lineIndex: number) {
 function buildGroupText(
   group: WordTimestamp[],
   style: CaptionStylePreset,
-  positionOverride: string
+  positionOverride: string,
+  fontOverride?: string | null
 ) {
   const usesKaraoke = style.animation === 'karaoke-highlight' || style.animation === 'highlight-box';
   const toDisplayWord = (word: string) => escapeAssText(style.uppercase ? word.trim().toUpperCase() : word.trim());
@@ -311,7 +314,7 @@ function buildGroupText(
     const joined = lines
       .map((lineWords, lineIndex) => {
         const words = lineWords.map((word) => toDisplayWord(word.word)).join(' ');
-        return `${buildLineVariantTag(style, lineIndex)}${words}`;
+        return `${buildLineVariantTag(style, lineIndex, fontOverride)}${words}`;
       })
       .join('\\N');
     return `${positionOverride}${animationTag}${joined}`;
@@ -320,7 +323,7 @@ function buildGroupText(
   if (!usesKaraoke && hasWordVariants) {
     const animationTag = getAnimationOverride(style);
     const joined = group
-      .map((word, index) => `${buildWordVariantTag(style, index)}${toDisplayWord(word.word)}{\\r}`)
+      .map((word, index) => `${buildWordVariantTag(style, index, fontOverride)}${toDisplayWord(word.word)}{\\r}`)
       .join(' ');
     return `${positionOverride}${animationTag}${joined}`;
   }
@@ -350,11 +353,14 @@ export function buildAssSubtitleFile(
   style: CaptionStylePreset,
   offset = 0,
   /** Global caption size multiplier from the in-browser size adjuster (1 = preset default). */
-  scale = 1
+  scale = 1,
+  /** Global font family override from the in-browser font picker. Falsy = use the preset's own fonts. */
+  fontFamily?: string | null
 ) {
   const scaledStyle: CaptionStylePreset = {
     ...style,
-    fontSize: Math.round(style.fontSize * (Number.isFinite(scale) ? scale : 1))
+    fontSize: Math.round(style.fontSize * (Number.isFinite(scale) ? scale : 1)),
+    fontFamily: fontFamily || style.fontFamily
   };
 
   const header = [
@@ -383,7 +389,7 @@ export function buildAssSubtitleFile(
       const start = Math.max(0, group[0].start);
       const lastWord = group[group.length - 1];
       const end = Math.max(start + 0.05, lastWord.end);
-      const text = buildGroupText(group, scaledStyle, positionOverride);
+      const text = buildGroupText(group, scaledStyle, positionOverride, fontFamily);
 
       return `Dialogue: 0,${toAssTimestamp(start)},${toAssTimestamp(end)},Default,,0,0,0,,${text}`;
     });
