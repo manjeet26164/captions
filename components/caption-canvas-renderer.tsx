@@ -219,17 +219,36 @@ function getWordVariant(style: CaptionStylePreset, groupIndex: number) {
   return variants[groupIndex % variants.length];
 }
 
+/** Picks the per-line font/color/size override for "cascade" presets, cycling through lineStyleVariants. */
+function getLineVariant(style: CaptionStylePreset, lineIndex: number) {
+  const variants = style.lineStyleVariants;
+  if (!variants || variants.length === 0) {
+    return undefined;
+  }
+  return variants[lineIndex % variants.length];
+}
+
+/** Splits words into fixed-size lines (used by cascade presets instead of pixel-width auto-wrap so the same line always gets the same variant). */
+function chunkWordsIntoLines<T>(items: T[], size: number) {
+  const safeSize = Math.max(1, size);
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += safeSize) {
+    chunks.push(items.slice(index, index + safeSize));
+  }
+  return chunks;
+}
+
 /** Builds a canvas font string for a word, honoring a wordStyleVariants override where present. */
-function buildWordFont(style: CaptionStylePreset, variant: ReturnType<typeof getWordVariant>) {
+function buildWordFont(style: CaptionStylePreset, variant: ReturnType<typeof getWordVariant>, baseFontSize: number) {
   const weight = variant?.fontWeight ?? '700';
   const fontStyle = variant?.fontStyle === 'italic' ? 'italic ' : '';
-  const size = Math.round(style.fontSize * (variant?.scale ?? 1));
+  const size = Math.round(baseFontSize * (variant?.scale ?? 1));
   const family = variant?.fontFamily ?? style.fontFamily;
   return `${fontStyle}${weight} ${size}px ${family}`;
 }
 
 export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, className }: CaptionCanvasRendererProps) {
-  const { selectedStyle, captionOffset, setCaptionOffset } = useCaptionStyle();
+  const { selectedStyle, captionOffset, setCaptionOffset, captionScale, setCaptionScale } = useCaptionStyle();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const frameRef = useRef<number | null>(null);
@@ -365,10 +384,16 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
       return;
     }
 
-    const fontSize = selectedStyle.fontSize;
+    const fontSize = selectedStyle.fontSize * captionScale;
+    const useLineVariants = Boolean(selectedStyle.lineStyleVariants?.length) && Boolean(selectedStyle.wordsPerLine);
     const hasWordVariants = Boolean(selectedStyle.wordStyleVariants?.length);
-    const maxVariantScale = hasWordVariants
-      ? Math.max(1, ...selectedStyle.wordStyleVariants!.map((variant) => variant.scale ?? 1))
+    const activeVariantSet = selectedStyle.lineStyleVariants?.length
+      ? selectedStyle.lineStyleVariants
+      : hasWordVariants
+        ? selectedStyle.wordStyleVariants
+        : undefined;
+    const maxVariantScale = activeVariantSet
+      ? Math.max(1, ...activeVariantSet.map((variant) => variant.scale ?? 1))
       : 1;
     const lineHeight = fontSize * 1.45 * maxVariantScale;
     const textPaddingX = Math.max(20, fontSize * 0.65);
@@ -385,34 +410,54 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
 
     const spaceWidth = context.measureText(' ').width;
     const lines: { words: CaptionWordVisual[]; width: number }[] = [];
-    let currentLine: CaptionWordVisual[] = [];
-    let currentLineWidth = 0;
 
-    visuals.forEach((visual) => {
-      const wordVariant = getWordVariant(selectedStyle, visual.groupIndex);
-      context.font = buildWordFont(selectedStyle, wordVariant);
-      const wordWidth = context.measureText(displayText(visual.word.word)).width;
-      const nextWidth = currentLine.length === 0 ? wordWidth : currentLineWidth + spaceWidth + wordWidth;
+    if (useLineVariants) {
+      // Cascade presets: force a fixed word count per line so line N always maps to the same
+      // style variant (big word, then smaller line, then colored line, etc), instead of
+      // auto-wrapping by pixel width, which would shuffle which words land on which line.
+      const chunks = chunkWordsIntoLines(visuals, selectedStyle.wordsPerLine!);
+      chunks.forEach((chunk, lineIndex) => {
+        const lineVariant = getLineVariant(selectedStyle, lineIndex);
+        context.font = buildWordFont(selectedStyle, lineVariant, fontSize);
+        let width = 0;
+        chunk.forEach((visual, wordIndex) => {
+          width += context.measureText(displayText(visual.word.word)).width;
+          if (wordIndex < chunk.length - 1) {
+            width += spaceWidth;
+          }
+        });
+        lines.push({ words: chunk, width });
+      });
+    } else {
+      let currentLine: CaptionWordVisual[] = [];
+      let currentLineWidth = 0;
 
-      if (currentLine.length > 0 && nextWidth > maxTextWidth) {
+      visuals.forEach((visual) => {
+        const wordVariant = getWordVariant(selectedStyle, visual.groupIndex);
+        context.font = buildWordFont(selectedStyle, wordVariant, fontSize);
+        const wordWidth = context.measureText(displayText(visual.word.word)).width;
+        const nextWidth = currentLine.length === 0 ? wordWidth : currentLineWidth + spaceWidth + wordWidth;
+
+        if (currentLine.length > 0 && nextWidth > maxTextWidth) {
+          lines.push({ words: currentLine, width: currentLineWidth });
+          currentLine = [visual];
+          currentLineWidth = wordWidth;
+          return;
+        }
+
+        if (currentLine.length === 0) {
+          currentLine = [visual];
+          currentLineWidth = wordWidth;
+          return;
+        }
+
+        currentLine.push(visual);
+        currentLineWidth = nextWidth;
+      });
+
+      if (currentLine.length > 0) {
         lines.push({ words: currentLine, width: currentLineWidth });
-        currentLine = [visual];
-        currentLineWidth = wordWidth;
-        return;
       }
-
-      if (currentLine.length === 0) {
-        currentLine = [visual];
-        currentLineWidth = wordWidth;
-        return;
-      }
-
-      currentLine.push(visual);
-      currentLineWidth = nextWidth;
-    });
-
-    if (currentLine.length > 0) {
-      lines.push({ words: currentLine, width: currentLineWidth });
     }
 
     const textBlockHeight = lines.length * lineHeight + textPaddingY * 2;
@@ -436,11 +481,12 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
 
       let cursorX = lineX;
       const activeWordIndexNow = getActiveWordIndex(editableWords, currentTime);
+      const lineVariant = useLineVariants ? getLineVariant(selectedStyle, lineIndex) : undefined;
 
       line.words.forEach((visual, index) => {
         const text = displayText(visual.word.word);
-        const wordVariant = getWordVariant(selectedStyle, visual.groupIndex);
-        context.font = buildWordFont(selectedStyle, wordVariant);
+        const wordVariant = lineVariant ?? getWordVariant(selectedStyle, visual.groupIndex);
+        context.font = buildWordFont(selectedStyle, wordVariant, fontSize);
         const wordWidth = context.measureText(text).width;
         const isHighlighted = selectedStyle.animation === 'karaoke-highlight' && editableWords[activeWordIndexNow]?.word === visual.word.word;
         const isActiveBoxWord = selectedStyle.animation === 'highlight-box' && editableWords[activeWordIndexNow] === visual.word;
@@ -498,7 +544,7 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
         }
       });
     });
-  }, [editableWords, selectedStyle, captionOffset]);
+  }, [editableWords, selectedStyle, captionOffset, captionScale]);
 
   const handleTimelineSeek = useCallback((time: number) => {
     const video = videoRef.current;
@@ -657,6 +703,7 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
       formData.append('wordTimestamps', JSON.stringify(editableWords));
       formData.append('style', JSON.stringify(selectedStyle));
       formData.append('offsetY', String(captionOffset));
+      formData.append('scale', String(captionScale));
 
       const response = await fetch('/api/render', {
         method: 'POST',
@@ -680,7 +727,7 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
     } finally {
       setIsExporting(false);
     }
-  }, [downloadBlob, editableWords, isExporting, selectedStyle, sourceFile, captionOffset]);
+  }, [downloadBlob, editableWords, isExporting, selectedStyle, sourceFile, captionOffset, captionScale]);
 
   const handleCaptionDragStart = useCallback((clientY: number) => {
     dragStateRef.current = { startClientY: clientY, startOffset: captionOffset };
@@ -773,6 +820,33 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
           <button
             type="button"
             onClick={() => setCaptionOffset(0)}
+            className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/10"
+          >
+            Reset
+          </button>
+        </div>
+      ) : null}
+
+      {hasWords ? (
+        <div className="mt-3 flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
+          <span className="whitespace-nowrap text-xs uppercase tracking-[0.28em] text-slate-400">
+            Caption size
+          </span>
+          <input
+            type="range"
+            min={60}
+            max={160}
+            step={2}
+            value={Math.round(captionScale * 100)}
+            onChange={(event) => setCaptionScale(clamp(Number(event.target.value) / 100, 0.6, 1.6))}
+            className="h-1.5 flex-1 min-w-[8rem] accent-cyan-400"
+          />
+          <span className="w-12 shrink-0 text-right text-xs text-slate-400">
+            {Math.round(captionScale * 100)}%
+          </span>
+          <button
+            type="button"
+            onClick={() => setCaptionScale(1)}
             className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/10"
           >
             Reset

@@ -12,6 +12,9 @@ type CaptionStyleContextValue = {
   /** Manual vertical nudge as a fraction of frame height (-0.35 to 0.35, 0 = preset default). */
   captionOffset: number;
   setCaptionOffset: (offset: number) => void;
+  /** Global caption size multiplier applied on top of the preset's fontSize (0.5 - 2, 1 = preset default). */
+  captionScale: number;
+  setCaptionScale: (scale: number) => void;
 };
 
 const CaptionStyleContext = createContext<CaptionStyleContextValue | null>(null);
@@ -23,10 +26,11 @@ export function CaptionStyleProvider({
 }) {
   const [selectedStyle, setSelectedStyle] = useState<CaptionStylePreset>(captionStylePresets[0]);
   const [captionOffset, setCaptionOffset] = useState(0);
+  const [captionScale, setCaptionScale] = useState(1);
 
   const value = useMemo(
-    () => ({ selectedStyle, setSelectedStyle, captionOffset, setCaptionOffset }),
-    [selectedStyle, captionOffset]
+    () => ({ selectedStyle, setSelectedStyle, captionOffset, setCaptionOffset, captionScale, setCaptionScale }),
+    [selectedStyle, captionOffset, captionScale]
   );
 
   return (

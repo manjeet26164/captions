@@ -58,6 +58,18 @@ export type CaptionStylePreset = {
   wordsPerGroup?: number;
   /** Per-word font/position variants, cycled across the visible group (CapCut "stylish" look). */
   wordStyleVariants?: WordStyleVariant[];
+  /**
+   * Per-LINE font/color/size variants, cycled by line index (line 1 uses variants[0], line 2
+   * uses variants[1], etc, wrapping back to variants[0] after the array ends). Used for
+   * "cascading title card" presets where every line in the group has a different look
+   * (e.g. big bold word, then smaller white line, then small colored line, then an italic
+   * script line, then a colored closing line) instead of one uniform style for the group.
+   * When set together with `wordsPerLine`, lines are split by a fixed word count instead of
+   * by pixel width so the cascade always lands on the same variant for the same line.
+   */
+  lineStyleVariants?: WordStyleVariant[];
+  /** Forces a fixed number of words per line instead of auto-wrapping by pixel width. Only used together with `lineStyleVariants`. */
+  wordsPerLine?: number;
 };
 
 export const captionStylePresets: CaptionStylePreset[] = [
@@ -203,6 +215,25 @@ export const captionStylePresets: CaptionStylePreset[] = [
       { fontWeight: '400', fontStyle: 'italic', fontFamily: 'Georgia, "Times New Roman", serif', scale: 0.86, yOffset: 3, rotation: -5, color: '#22D3EE' },
       { fontWeight: '900', fontStyle: 'normal', scale: 1.1, yOffset: -6, rotation: 4, color: '#F472B6' },
       { fontWeight: '400', fontStyle: 'italic', fontFamily: 'Georgia, "Times New Roman", serif', scale: 0.9, yOffset: 5, rotation: -2, color: '#FFFFFF' }
+    ]
+  },
+  {
+    name: 'cascade-reveal',
+    fontFamily: 'Poppins, Arial, sans-serif',
+    fontSize: 32,
+    color: '#FFFFFF',
+    strokeColor: '#000000',
+    strokeWidth: 6,
+    animation: 'pop',
+    position: 'center',
+    wordsPerGroup: 10,
+    wordsPerLine: 2,
+    lineStyleVariants: [
+      { fontWeight: '800', fontStyle: 'normal', scale: 1.35, color: '#FDE047' },
+      { fontWeight: '700', fontStyle: 'normal', scale: 1.0, color: '#FFFFFF' },
+      { fontWeight: '600', fontStyle: 'normal', scale: 0.7, color: '#FDE047' },
+      { fontWeight: '400', fontStyle: 'italic', fontFamily: 'Georgia, "Times New Roman", serif', scale: 1.0, color: '#E5E7EB' },
+      { fontWeight: '800', fontStyle: 'normal', scale: 1.05, color: '#EC4899' }
     ]
   },
   {

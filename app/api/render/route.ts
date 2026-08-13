@@ -114,6 +114,7 @@ export async function POST(request: Request) {
     const wordTimestampsRaw = formData.get('wordTimestamps');
     const styleRaw = formData.get('style');
     const offsetYRaw = formData.get('offsetY');
+    const scaleRaw = formData.get('scale');
 
     if (!(video instanceof File)) {
       return Response.json({ error: 'Provide a video file in the video form field.' }, { status: 400 });
@@ -147,6 +148,9 @@ export async function POST(request: Request) {
     const parsedOffset = typeof offsetYRaw === 'string' ? Number(offsetYRaw) : 0;
     const offsetY = Number.isFinite(parsedOffset) ? Math.min(0.35, Math.max(-0.35, parsedOffset)) : 0;
 
+    const parsedScale = typeof scaleRaw === 'string' ? Number(scaleRaw) : 1;
+    const captionScale = Number.isFinite(parsedScale) ? Math.min(1.6, Math.max(0.6, parsedScale)) : 1;
+
     const inputExt = path.extname(video.name).toLowerCase() || '.mp4';
     const outputFilename = getDownloadFilename(video.name);
     const inputPath = path.join(tempDir, `input${inputExt}`);
@@ -154,7 +158,7 @@ export async function POST(request: Request) {
     const outputPath = path.join(tempDir, outputFilename);
 
     await writeFile(inputPath, Buffer.from(await video.arrayBuffer()));
-    await writeFile(subtitlePath, buildAssSubtitleFile(parsedTimestamps, parsedStyle, offsetY));
+    await writeFile(subtitlePath, buildAssSubtitleFile(parsedTimestamps, parsedStyle, offsetY, captionScale));
 
     try {
       await renderVideoWithCaptions({ inputPath, outputPath, subtitlePath });

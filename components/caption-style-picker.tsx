@@ -57,8 +57,44 @@ function getPreviewAnimation(animation: CaptionAnimation) {
   }
 }
 
+const cascadeSampleLines = ['kya', 'hua', 'bro', 'aaj', 'kal'];
+
 function PreviewText({ style }: { style: CaptionStylePreset }) {
   const previewMotion = getPreviewAnimation(style.animation);
+
+  if (style.lineStyleVariants?.length) {
+    const variants = style.lineStyleVariants;
+
+    return (
+      <div className="mt-4 flex flex-col items-center gap-1">
+        {cascadeSampleLines.map((word, index) => {
+          const variant = variants[index % variants.length];
+          const displayWord = style.uppercase ? word.toUpperCase() : word;
+          const baseSize = 15;
+
+          return (
+            <motion.span
+              key={`${word}-${index}`}
+              initial={{ opacity: 0.6 }}
+              animate={{ opacity: [0.6, 1, 0.85, 1] }}
+              transition={{ duration: 1.6, repeat: Infinity, repeatDelay: 0.3, delay: index * 0.12, ease: 'easeInOut' }}
+              style={{
+                fontFamily: variant.fontFamily ?? style.fontFamily,
+                fontWeight: variant.fontWeight ?? '700',
+                fontStyle: variant.fontStyle ?? 'normal',
+                color: variant.color ?? style.color,
+                fontSize: `${Math.round(baseSize * (variant.scale ?? 1))}px`,
+                textShadow: `${style.strokeWidth / 3}px ${style.strokeWidth / 3}px 0 ${style.strokeColor}`,
+                lineHeight: 1.25
+              }}
+            >
+              {displayWord}
+            </motion.span>
+          );
+        })}
+      </div>
+    );
+  }
 
   if (style.animation === 'karaoke-highlight') {
     return (
