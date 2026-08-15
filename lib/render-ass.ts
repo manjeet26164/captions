@@ -46,8 +46,41 @@ function escapeAssText(value: string) {
     .replace(/\r?\n/g, '\\N');
 }
 
+/**
+ * ffmpeg's `subtitles` filter (libass) resolves font names against fontconfig, which only
+ * knows about fonts actually installed on the machine running ffmpeg. Web fonts like Poppins
+ * or Montserrat (loaded in the browser via CSS) are NOT installed there, so libass silently
+ * falls back to whatever default font it can find — every preset ends up rendering in that
+ * same fallback font in the exported video, no matter which one was picked in the UI.
+ *
+ * To fix this, the `fonts/` folder at the project root ships real .ttf files (see
+ * app/api/render/route.ts, which points ffmpeg's `fontsdir` at it) and this map translates
+ * each font name used in captionStyles.ts / captionFontOptions to the family name of the
+ * bundled file. System-only fonts (Arial Black, Times New Roman, Impact, etc.) are mapped to
+ * free, visually close substitutes since the real fonts can't be legally bundled.
+ */
+const bundledFontMap: Record<string, string> = {
+  Poppins: 'Poppins',
+  Montserrat: 'Montserrat',
+  Inter: 'Inter',
+  Manrope: 'Manrope',
+  'Arial Black': 'Archivo Black',
+  'SF Pro Display': 'Inter',
+  Verdana: 'Noto Sans',
+  Geneva: 'Noto Sans',
+  'Times New Roman': 'Tinos',
+  Georgia: 'Gelasio',
+  'Comic Sans MS': 'Comic Neue',
+  'Comic Sans': 'Comic Neue',
+  Impact: 'Anton',
+  'Courier New': 'Cousine',
+  Courier: 'Cousine',
+  'Brush Script MT': 'Sacramento'
+};
+
 function normalizeFontName(fontFamily: string) {
-  return fontFamily.split(',')[0]?.trim() || 'Arial';
+  const requested = fontFamily.split(',')[0]?.trim().replace(/^["']|["']$/g, '') || 'Arial';
+  return bundledFontMap[requested] ?? requested;
 }
 
 function hexToAssColor(hex: string, alpha = '00') {

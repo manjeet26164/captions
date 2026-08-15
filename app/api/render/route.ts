@@ -75,15 +75,19 @@ function getContentType(filename: string) {
 async function renderVideoWithCaptions({
   inputPath,
   outputPath,
-  subtitlePath
+  subtitlePath,
+  fontsDir
 }: {
   inputPath: string;
   outputPath: string;
   subtitlePath: string;
+  fontsDir: string;
 }) {
   await new Promise<void>((resolve, reject) => {
     ffmpeg(inputPath)
-      .videoFilters(`subtitles='${escapeFilterPath(subtitlePath)}'`)
+      .videoFilters(
+        `subtitles='${escapeFilterPath(subtitlePath)}':fontsdir='${escapeFilterPath(fontsDir)}'`
+      )
       .outputOptions([
         '-map 0:v:0',
         '-map 0:a?',
@@ -96,6 +100,17 @@ async function renderVideoWithCaptions({
         '-c:a copy',
         '-movflags +faststart'
       ])
+      .on('start', (commandLine) => {
+        // TEMP DEBUG — remove once fonts render correctly. Check this in your terminal.
+        console.log('[render] fontsDir:', fontsDir);
+        console.log('[render] ffmpeg command:', commandLine);
+      })
+      .on('stderr', (stderrLine) => {
+        // libass prints lines like "fontselect: (Family) -> (Family) ... fallback" here.
+        if (/font|glyph/i.test(stderrLine)) {
+          console.log('[render][ffmpeg]', stderrLine);
+        }
+      })
       .on('error', reject)
       .on('end', () => resolve())
       .save(outputPath);
@@ -161,12 +176,15 @@ export async function POST(request: Request) {
     const inputPath = path.join(tempDir, `input${inputExt}`);
     const subtitlePath = path.join(tempDir, 'captions.ass');
     const outputPath = path.join(tempDir, outputFilename);
+    // Real .ttf files bundled with the app so libass can actually find the requested font
+    // instead of silently falling back to whatever default font it has (see lib/render-ass.ts).
+    const fontsDir = path.join(process.cwd(), 'fonts');
 
     await writeFile(inputPath, Buffer.from(await video.arrayBuffer()));
     await writeFile(subtitlePath, buildAssSubtitleFile(parsedTimestamps, parsedStyle, offsetY, captionScale, fontFamily));
 
     try {
-      await renderVideoWithCaptions({ inputPath, outputPath, subtitlePath });
+      await renderVideoWithCaptions({ inputPath, outputPath, subtitlePath, fontsDir });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown FFmpeg error.';
       return Response.json(

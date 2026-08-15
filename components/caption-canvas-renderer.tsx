@@ -279,6 +279,7 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
   const [exportError, setExportError] = useState<string | null>(null);
   const [editableWords, setEditableWords] = useState<WordTimestamp[]>(wordTimestamps);
   const [selectedWordIndex, setSelectedWordIndex] = useState(0);
+  const [newWordText, setNewWordText] = useState('');
 
   const hasWords = wordTimestamps.length > 0;
 
@@ -339,6 +340,64 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
         };
       })
     );
+  }, [selectedWordIndex]);
+
+  /**
+   * Inserts a word right after the selected word. This is for words Whisper skipped
+   * (so the caption line never showed them). If there's already a timing gap between
+   * the selected word and the next one, the new word is placed inside that gap. If not,
+   * a small slot is carved out and every later word is shifted forward by the same
+   * amount so nothing ever overlaps or goes out of lip-sync.
+   */
+  const insertWordAfterSelected = useCallback((text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) {
+      return;
+    }
+
+    setEditableWords((currentWords) => {
+      if (currentWords.length === 0) {
+        return [{ word: trimmed, start: 0, end: 0.4 }];
+      }
+
+      const insertAt = selectedWordIndex + 1;
+      const previousWord = currentWords[selectedWordIndex];
+      const nextWord = currentWords[insertAt];
+
+      const gapStart = previousWord ? previousWord.end : 0;
+      const gapEnd = nextWord ? nextWord.start : gapStart + 0.4;
+      const minSlot = 0.12;
+
+      let start: number;
+      let end: number;
+      let shift = 0;
+
+      if (gapEnd - gapStart >= minSlot) {
+        start = gapStart + 0.01;
+        end = gapEnd - 0.01;
+      } else {
+        start = gapStart + 0.01;
+        end = start + minSlot;
+        shift = end - gapEnd + 0.01;
+      }
+
+      const newWord: WordTimestamp = { word: trimmed, start, end };
+      const nextWords = [
+        ...currentWords.slice(0, insertAt),
+        newWord,
+        ...currentWords.slice(insertAt)
+      ];
+
+      if (shift > 0) {
+        return nextWords.map((word, index) =>
+          index > insertAt ? { ...word, start: word.start + shift, end: word.end + shift } : word
+        );
+      }
+
+      return nextWords;
+    });
+
+    setSelectedWordIndex((currentIndex) => currentIndex + 1);
   }, [selectedWordIndex]);
 
   const stopFrameLoop = useCallback(() => {
@@ -1095,6 +1154,39 @@ export function CaptionCanvasRenderer({ videoSrc, sourceFile, wordTimestamps, cl
 
                   <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-slate-950/50 p-3 text-xs text-slate-400">
                     Drag-style timeline editing is handled with word selection plus start/end fields, which keeps the canvas and export preview in sync.
+                  </div>
+
+                  <div className="mt-4 rounded-2xl border border-dashed border-cyan-300/20 bg-cyan-400/5 p-3">
+                    <p className="text-xs uppercase tracking-[0.28em] text-slate-400">Insert missing word</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Kabhi kabhi Whisper koi word skip kar deta hai. Yahan se woh word manually add karo — yeh selected word ke turant baad insert ho jayega, timing apne aap adjust ho jayegi.
+                    </p>
+                    <div className="mt-3 flex gap-2">
+                      <input
+                        type="text"
+                        value={newWordText}
+                        onChange={(event) => setNewWordText(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            insertWordAfterSelected(newWordText);
+                            setNewWordText('');
+                          }
+                        }}
+                        placeholder="Missing word"
+                        className="min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-950 px-3 py-2 text-sm text-white outline-none transition focus:border-cyan-300/60"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          insertWordAfterSelected(newWordText);
+                          setNewWordText('');
+                        }}
+                        disabled={!newWordText.trim()}
+                        className="shrink-0 rounded-full bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:bg-cyan-300/40"
+                      >
+                        Insert after
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
